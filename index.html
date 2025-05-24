@@ -1,0 +1,812 @@
+  <!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="utf-8">
+    <title>全景场景跳转（自定义热点）</title>
+    <!-- 加载 Pannellum 的 CSS 和 JS -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css" />
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <style>
+        body,
+        html {
+            margin: 0;
+            height: 100%;
+        }
+
+        #panorama {
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* 自定义热点容器 */
+        .custom-hotspot {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            cursor: pointer;
+            z-index: 1000;
+
+        }
+
+        /* 闪烁的白色圆圈 */
+        .hotspot-circle {
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background-color: white;
+            position: absolute;
+            top: 0;
+            left: 0;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.7);
+            animation: pulse 1.5s infinite ease-in-out;
+        }
+
+        @keyframes pulse {
+            0% {
+                transform: scale(0.8);
+                opacity: 0.7;
+            }
+
+            50% {
+                transform: scale(1);
+                opacity: 1;
+            }
+
+            100% {
+                transform: scale(0.8);
+                opacity: 0.7;
+            }
+        }
+
+        /* 热点提示文字 */
+        .hotspot-tooltip {
+            position: absolute;
+            bottom: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-bottom: 8px;
+            padding: 4px 8px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            font-size: 12px;
+            white-space: nowrap;
+            border-radius: 4px;
+            opacity: 0;
+            transition: opacity 0.2s;
+            pointer-events: none;
+        }
+
+        .custom-hotspot:hover .hotspot-tooltip {
+            opacity: 1;
+        }
+
+        /* 图片介绍弹窗 */
+        .image-modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+        }
+
+        .image-modal.active {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .modal-content {
+            max-width: 90%;
+            max-height: 90%;
+            position: relative;
+        }
+
+        .modal-image {
+            max-width: 100%;
+            max-height: 80vh;
+            border-radius: 4px;
+            box-shadow: 0 0 20px rgba(0, 0, 0, 0.5);
+        }
+
+        .modal-close {
+            position: absolute;
+            top: -30px;
+            right: 0;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+
+        .modal-close:hover {
+            transform: scale(1.2);
+        }
+
+        .modal-title {
+            color: white;
+            text-align: center;
+            margin-top: 10px;
+            font-size: 18px;
+        }
+    </style>
+</head>
+
+<body>
+    <div id="panorama"></div>
+
+    <!-- 图片介绍弹窗 -->
+    <div id="imageModal" class="image-modal">
+        <div class="modal-content">
+            <div class="modal-close" onclick="closeImageModal()">&times;</div>
+            <img id="modalImage" class="modal-image" src="" alt="介绍图片">
+            <div id="modalTitle" class="modal-title"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量存储当前查看器实例
+        let viewer;
+
+        // 自定义热点创建函数 - 场景跳转类型
+        function createSceneHotspot(hotSpotDiv, args) {
+            // 设置热点容器样式
+            hotSpotDiv.style.position = 'absolute';
+            hotSpotDiv.style.width = '30px';
+            hotSpotDiv.style.height = '30px';
+            hotSpotDiv.style.cursor = 'pointer';
+            hotSpotDiv.style.zIndex = '1000';
+            hotSpotDiv.classList.add('custom-hotspot');
+
+            // 创建白色圆圈
+            const circle = document.createElement('div');
+            circle.className = 'hotspot-circle';
+            hotSpotDiv.appendChild(circle);
+
+            // 创建提示文字
+            if (args.text) {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'hotspot-tooltip';
+                tooltip.textContent = args.text;
+                hotSpotDiv.appendChild(tooltip);
+            }
+
+            // 绑定点击事件 - 跳转到指定场景
+            hotSpotDiv.addEventListener('click', function (e) {
+                e.stopPropagation();
+                viewer.loadScene(args.sceneId);
+            });
+        }
+
+        // 自定义热点创建函数 - 图片介绍类型
+        function createImageHotspot(hotSpotDiv, args) {
+            // 设置热点容器样式
+            hotSpotDiv.style.position = 'absolute';
+            hotSpotDiv.style.width = '30px';
+            hotSpotDiv.style.height = '30px';
+            hotSpotDiv.style.cursor = 'pointer';
+            hotSpotDiv.style.zIndex = '1000';
+            hotSpotDiv.classList.add('custom-hotspot');
+
+            // 创建白色圆圈（与场景跳转热点样式相同，但颜色可区分）
+            const circle = document.createElement('div');
+            circle.className = 'hotspot-circle';
+            // 可选：为图片热点设置不同颜色
+            circle.style.backgroundColor = 'rgba(255, 255, 0, 0.9)'; // 黄色
+            hotSpotDiv.appendChild(circle);
+
+            // 创建提示文字
+            if (args.text) {
+                const tooltip = document.createElement('div');
+                tooltip.className = 'hotspot-tooltip';
+                tooltip.textContent = args.text;
+                hotSpotDiv.appendChild(tooltip);
+            }
+
+            // 绑定点击事件 - 显示图片介绍
+            hotSpotDiv.addEventListener('click', function (e) {
+                e.stopPropagation();
+                showImageModal(args.imageUrl, args.title);
+            });
+        }
+
+        // 显示图片模态框
+        function showImageModal(imageUrl, title) {
+            const modal = document.getElementById('imageModal');
+            const modalImage = document.getElementById('modalImage');
+            const modalTitle = document.getElementById('modalTitle');
+
+            modalImage.src = imageUrl;
+            modalTitle.textContent = title || '详细介绍';
+            modal.classList.add('active');
+
+            // 禁止背景滚动
+            document.body.style.overflow = 'hidden';
+        }
+
+        // 关闭图片模态框
+        function closeImageModal() {
+            const modal = document.getElementById('imageModal');
+            modal.classList.remove('active');
+
+            // 恢复背景滚动
+            document.body.style.overflow = '';
+        }
+
+        // 初始化 Pannellum 全景查看器
+        document.addEventListener('DOMContentLoaded', function () {
+            // 定义所有场景配置
+            const scenes = {
+                // 场景1配置
+                scene1: {
+                    title: '场景一：房间1',
+                    type: 'equirectangular',
+                    panorama: '1.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        {
+                            pitch: -54.79,
+                            yaw: -19.59,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene4',
+                                text: '点我进入房间4'
+                            }
+                        },
+                        {
+                            pitch: -53.24,
+                            yaw: 50.44,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene2',
+                                text: '点我进入房间2'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景2配置
+                scene2: {
+                    title: '场景二：房间2',
+                    type: 'equirectangular',
+                    panorama: '2.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -44.34,
+                            yaw: -164.70,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene3',
+                                text: '点我进入房间3'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -14.16,
+                            yaw: 17.24,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene1',
+                                text: '返回房间1'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景3配置
+                scene3: {
+                    title: '场景三：房间3',
+                    type: 'equirectangular',
+                    panorama: '3.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                      
+                        // 后退热点
+                        {
+                            pitch: -16.86,
+                            yaw: 152.09,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene2',
+                                text: '返回房间2'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景4配置
+                scene4: {
+                    title: '场景四：房间4',
+                    type: 'equirectangular',
+                    panorama: '4.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -39.44,
+                            yaw: -4.86,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene7',
+                                text: '点我进入房间7'
+                            }
+                        },
+                        {
+                            pitch: -13.92,
+                            yaw: -129.54,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene5',
+                                text: '点我进入房间5'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -41.91,
+                            yaw: 154.32,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene1',
+                                text: '返回房间1'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景5配置
+                scene5: {
+                    title: '场景五：房间5',
+                    type: 'equirectangular',
+                    panorama: '5.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                       {
+                            pitch: -19.09,
+                            yaw: -10.14,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene6',
+                                text: '点我进入房间6'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -11.19,
+                            yaw: 135.78,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene4',
+                                text: '返回房间4'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景6配置
+                scene6: {
+                    title: '场景六：房间6',
+                    type: 'equirectangular',
+                    panorama: '6.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        
+                        // 后退热点
+                        {
+                            pitch: -15.51,
+                            yaw: -86.75,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene5',
+                                text: '返回房间5'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景7配置
+                scene7: {
+                    title: '场景七：房间7',
+                    type: 'equirectangular',
+                    panorama: '7.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -18.04,
+                            yaw: -142.71,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene8',
+                                text: '点我进入房间8'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -20.43,
+                            yaw: 133.87,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene4',
+                                text: '返回房间4'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景8配置
+                scene8: {
+                    title: '场景八：房间8',
+                    type: 'equirectangular',
+                    panorama: '8.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -18.48,
+                            yaw: 15.76,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene9',
+                                text: '点我进入房间9'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -16.76,
+                            yaw: -177.72,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene7',
+                                text: '返回房间7'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景9配置
+                scene9: {
+                    title: '场景九：房间9',
+                    type: 'equirectangular',
+                    panorama: '9.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -23.18,
+                            yaw: -168.37,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene10',
+                                text: '点我进入房间10'
+                            }
+                        },
+                        {
+                            pitch: -20.00,
+                            yaw: 74.08,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene16',
+                                text: '点我进入房间16'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -15.03,
+                            yaw: -71.83,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene8',
+                                text: '返回房间8'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景10配置
+                scene10: {
+                    title: '场景十：房间10',
+                    type: 'equirectangular',
+                    panorama: '10.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -12.76,
+                            yaw: 32.70,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene11',
+                                text: '点我进入房间11'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -20.36,
+                            yaw: 160.05,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene9',
+                                text: '返回房间9'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景11配置
+                scene11: {
+                    title: '场景十一：房间11',
+                    type: 'equirectangular',
+                    panorama: '11.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -15.01,
+                            yaw: 153.41,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene12',
+                                text: '点我进入房间12'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -11.99,
+                            yaw: 26.73,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene10',
+                                text: '返回房间10'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景12配置
+                scene12: {
+                    title: '场景十二：房间12',
+                    type: 'equirectangular',
+                    panorama: '12.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -5.36,
+                            yaw: 171.54,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene13',
+                                text: '点我进入房间13'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -16.85,
+                            yaw: 2.13,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene11',
+                                text: '返回房间11'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景13配置
+                scene13: {
+                    title: '场景十三：房间13',
+                    type: 'equirectangular',
+                    panorama: '13.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -24.21,
+                            yaw: 123.71,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene14',
+                                text: '点我进入房间14'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -34.39,
+                            yaw: -9.64,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene12',
+                                text: '返回房间12'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景14配置
+                scene14: {
+                    title: '场景十四：房间14',
+                    type: 'equirectangular',
+                    panorama: '14.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -15.59,
+                            yaw: -36.01,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene15',
+                                text: '点我进入房间15'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -34.78,
+                            yaw: 50.32,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene13',
+                                text: '返回房间13'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景15配置
+                scene15: {
+                    title: '场景十五：房间15',
+                    type: 'equirectangular',
+                    panorama: '15.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                       
+                        // 后退热点
+                        {
+                            pitch: -13.47,
+                            yaw: 29.90,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene14',
+                                text: '返回房间14'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景16配置
+                scene16: {
+                    title: '场景十六：房间16',
+                    type: 'equirectangular',
+                    panorama: '16.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        {
+                            pitch: -17.50,
+                            yaw: -44.45,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene17',
+                                text: '点我进入房间17'
+                            }
+                        },
+                        // 后退热点
+                        {
+                            pitch: -40.30,
+                            yaw: 101.15,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene9',
+                                text: '返回房间9'
+                            }
+                        }
+                    ]
+                },
+                
+                // 场景17配置
+                scene17: {
+                    title: '场景十七：房间17',
+                    type: 'equirectangular',
+                    panorama: '17.jpg',
+                    autoLoad: true,
+                    hotSpots: [
+                        // 前进热点
+                        
+                        // 后退热点
+                        {
+                            pitch: -18.48,
+                            yaw: -102.00,
+                            type: 'custom',
+                            createTooltipFunc: createSceneHotspot,
+                            createTooltipArgs: {
+                                sceneId: 'scene16',
+                                text: '返回房间16'
+                            }
+                        }
+                    ]
+                }
+            };
+
+            viewer = pannellum.viewer('panorama', {
+                default: {
+                    firstScene: 'scene1',
+                    sceneFadeDuration: 1000
+                },
+                scenes: scenes
+            });
+
+            // 全景加载完成后添加热点
+            viewer.on('load', function () {
+                // 确保热点正确显示
+                setTimeout(function () {
+                    const hotspots = document.querySelectorAll('.custom-hotspot');
+                    hotspots.forEach(function (hotspot) {
+                        hotspot.style.display = 'block';
+                    });
+                }, 500);
+            });
+        });
+
+        // 点击模态框背景也可以关闭
+        document.getElementById('imageModal').addEventListener('click', function (e) {
+            if (e.target === this) {
+                closeImageModal();
+            }
+        });
+
+        // 支持ESC键关闭模态框
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape') {
+                closeImageModal();
+            }
+        });
+    </script>
+</body>
+
+</html>    
+
+
